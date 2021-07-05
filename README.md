@@ -200,3 +200,106 @@ $(OBJECTS) : $(SRCS)
   ```
 
   
+#### 7. device driver 제작 시 다음과 같은 팁이 있다.
+
+  ```c++
+  #include <stdio.h>
+  #include <stdlib.h>
+  #include <unistd.h>
+  #include <string.h>
+  #include <fcntl.h>
+  
+  int main(){
+  	int fd, len;
+  	char buf[BUFSIZ];
+  	int gpio_pin = 18;
+  
+  	fd = open("/sys/class/gpio/export",O_WRONLY);
+  	//if(fd = open("/sys/class/gpio/export",O_WRONLY) == -1)은 동작하지 않음.
+      if(fd == -1){
+          //ERROR 처리는 perror("error : not open export\n"); 으로 처리하는게 좋다.
+  		printf("error: not open export\n");
+  		return 1;
+  	}
+      //sprintf와 snprintf는 n만 차이나듯이 단순히 buf의 size를 매개변수에 추가한 내용이다.
+      //따라서 다음과 같은 내용으로도 변경할 수 있다.
+      //snprintf(buf, sizeof(BUFSIZ), "%d", gpio_pin);
+  	sprintf(buf,"%d", gpio_pin);
+  	if(write(fd, buf, sizeof(buf)) == -1){
+  		printf("error: fail to write gpio18");
+  		return 1;
+  	}
+  	close(fd);
+  
+  
+  	sprintf(buf, "/sys/class/gpio/gpio%d/direction", gpio_pin);
+  	fd = open(buf, O_WRONLY);
+  	if(fd  == -1){
+  		printf("error: not open direction\n");
+  		return 1;
+  	}
+  	if(write(fd, "out", sizeof(4))== -1){
+  		printf("error: not open out\n");
+  		return 1;
+  	}
+  	close(fd);
+  	
+  
+  	snprintf(buf, 200, "/sys/class/gpio/gpio%d/value", gpio_pin);
+  	fd = open(buf, O_WRONLY);
+  	if(fd == -1){
+  		printf("error: not open 1");
+  		return 1;
+  	}
+  	while(1){
+  		if(write(fd, "1", sizeof(2)) == -1){
+  			printf("error: not write high");
+  			return 1;
+  		}
+  		sleep(1);
+  		if(write(fd, "0", sizeof(2)) == -1){
+  			printf("error: not write low");
+  			return 1;
+  		}
+  		sleep(1);
+  	}
+  	close(fd);
+  
+  
+  	snprintf(buf, sizeof(buf), "/sys/class/gpio/unexport");
+  	fd = open(buf, O_WRONLY);
+  	if(fd == -1){
+  		printf("error : not open unexport");
+  		return 1;
+  	}
+  	snprintf(buf, sizeof(buf), "%d", gpio_pin);
+  	if(write(fd, buf, sizeof(buf))==-1){
+  		printf("error : not write gpio_pin");
+  		return 1;
+  	}
+  	close(fd);
+  
+  	return 0;
+  }
+  ```
+
+  >- if(fd = open("/sys/class/gpio/export",O_WRONLY) == -1)은 동작하지 않음.
+  >
+  >- sprintf와 snprintf는 다음과 같은 차이가 있다.
+  >
+  >  ```c
+  >  //sprintf와 snprintf는 n만 차이나듯이 단순히 buf의 size를 매개변수에 추가한 내용이다.
+  >  //따라서 다음은 같은 코드이다.
+  >  snprintf(buf, sizeof(BUFSIZ), "%d", gpio_pin);
+  >  sprintf(buf,"%d", gpio_pin);
+  >  ```
+  >
+  >- 에러처리는 꼭 `perror`로 사용해야한다. => 시스템 내부에서 생기는 오류도 함께 출력을 해야한다.
+  >
+  >  > 이 코드같은 경우는 단순히 `./led`를 수행하면 error: not open direction이 등장한다.
+  >  >
+  >  > 해당 이유는 정말로 direction이 안되는 내역이긴 하지만 코드 상의 문제가 아니라 커널상의 문제이다.
+  >  >
+  >  > perror를 통해 에러를 출력하면 권한 문제라는 오류가 함께 출력된다. 따라서 `sudo ./led`로 실행하면 동작된다.
+  >  >
+  >  > __즉, 코드 이외의 오류__로 동작하지 않을 수 있기 때문에 perror를 사용하는 방법이 가장 올바른 방식이다.
